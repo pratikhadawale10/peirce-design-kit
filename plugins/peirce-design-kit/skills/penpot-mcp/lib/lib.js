@@ -76,3 +76,21 @@ function findBoard(name) {
   function walk(n) { if (!n) return null; if (n.name === name && n.type === 'board') return n; var ch = n.children || []; for (var i = 0; i < ch.length; i++) { var f = walk(ch[i]); if (f) return f; } return null; }
   return walk(r);
 }
+
+/* WCAG relative luminance and contrast ratio, so a pairing can be checked
+   against the file's own colours instead of guessed at. Both take '#rgb' or
+   '#rrggbb'. A filled accent button usually needs the darker step: white on a
+   mid accent often lands near 3.7:1 and fails AA. */
+function lum(hex) {
+  var h = String(hex).replace('#', '');
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  var c = [0, 2, 4].map(function (i) {
+    var v = parseInt(h.substr(i, 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+function contrast(a, b) {
+  var x = lum(a), y = lum(b);
+  return Math.round(((Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)) * 100) / 100;
+}
