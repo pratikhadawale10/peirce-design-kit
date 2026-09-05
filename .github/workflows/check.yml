@@ -1,0 +1,48 @@
+name: check
+
+# The kit is pulled straight from main by agents that cannot see it fail. A
+# broken recipe or a doc that describes helpers we do not ship reaches them
+# before it reaches us, so it has to be caught here.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Every script parses
+        # A syntax error here is only discovered inside a browser sandbox,
+        # reported as a generic execute_code failure with no line number.
+        run: |
+          find plugins -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Every executable parses
+        run: |
+          for f in plugins/peirce-design-kit/bin/*; do bash -n "$f"; done
+
+      - name: Executables are executable
+        # They are put on an agent's PATH by the plugin loader. A lost mode bit
+        # surfaces as "command not found" with a working file sitting right there.
+        run: |
+          for f in plugins/peirce-design-kit/bin/*; do
+            test -x "$f" || { echo "$f is not executable"; exit 1; }
+          done
+
+      - name: Plugin manifests are valid JSON
+        run: |
+          for f in .claude-plugin/marketplace.json \
+                   plugins/peirce-design-kit/.claude-plugin/plugin.json \
+                   plugins/peirce-design-kit/.mcp.json; do
+            python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$f"
+          done
+
+      - name: Documentation matches the code
+        run: python3 checks/verify.py
