@@ -15,8 +15,16 @@ SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KIT="${PEIRCE_KIT:-$(dirname "$SELF")}"
 LIB="$KIT/skills/penpot-mcp/lib"
 RECIPES="$KIT/skills/penpot-mcp/recipes"
-WORK="${PEIRCE_WORK:-$HOME/.cache/peirce-kit}"
-mkdir -p "$WORK"
+# Scratch space. Private per invocation, so two runs in parallel cannot read
+# each other's half-written payload; set PEIRCE_WORK to a real path to keep the
+# intermediate files around and look at them.
+WORK="${PEIRCE_WORK:-}"
+if [ -n "$WORK" ]; then
+  mkdir -p "$WORK"
+else
+  WORK="$(mktemp -d "${TMPDIR:-/tmp}/peirce-kit.XXXXXX")"
+  trap 'rm -rf "$WORK"' EXIT
+fi
 
 SRC="${1:?usage: peirce-run <script.js|recipe> ['<args-json>']}"
 [ -f "$SRC" ] || SRC="$RECIPES/${SRC%.js}.js"
@@ -34,4 +42,4 @@ ARGS_JSON="${2:-}"
 [ -z "$ARGS_JSON" ] && ARGS_JSON='{}'
 printf 'var ARGS = %s;\n' "$ARGS_JSON" > "$WORK/args.js"
 cat "$WORK/args.js" "$TOK" "$LIB/lib.js" "$SRC" > "$WORK/build.js"
-"$SELF/peirce-mcp" code "$WORK/build.js"
+PEIRCE_WORK="$WORK" "$SELF/peirce-mcp" code "$WORK/build.js"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Export one shape to a PNG on disk, so it can be read back and looked at.
 #
-#   peirce-export <shapeId> [out.png]
+#   peirce-export <shapeId> [out.png]      default ./peirce-export.png
 #
 # Export a section board, not the whole page: a full-page export times out while
 # the renderer is busy. Run a no-op call first (peirce-run ping) or you get the
@@ -9,15 +9,24 @@
 set -euo pipefail
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORK="${PEIRCE_WORK:-$HOME/.cache/peirce-kit}"
-mkdir -p "$WORK"
+# Scratch space. Private per invocation, so two runs in parallel cannot read
+# each other's half-written payload; set PEIRCE_WORK to a real path to keep the
+# intermediate files around and look at them.
+WORK="${PEIRCE_WORK:-}"
+if [ -n "$WORK" ]; then
+  mkdir -p "$WORK"
+else
+  WORK="$(mktemp -d "${TMPDIR:-/tmp}/peirce-kit.XXXXXX")"
+  trap 'rm -rf "$WORK"' EXIT
+fi
 
 ID="${1:?usage: peirce-export <shapeId> [out.png]}"
-OUT="${2:-$WORK/out.png}"
+# Not inside WORK: that is a temp dir now, and the image is the point.
+OUT="${2:-./peirce-export.png}"
 
 python3 -c "import json,sys; json.dump({'shapeId':sys.argv[1],'format':'png'},open(sys.argv[2],'w'))" \
   "$ID" "$WORK/export.json"
-"$SELF/peirce-mcp" export_shape "$WORK/export.json" >/dev/null 2>&1 || true
+PEIRCE_WORK="$WORK" "$SELF/peirce-mcp" export_shape "$WORK/export.json" >/dev/null 2>&1 || true
 
 python3 - "$WORK/resp.json" "$OUT" <<'PY'
 import base64, json, sys

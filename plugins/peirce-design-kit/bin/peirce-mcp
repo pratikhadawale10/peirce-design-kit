@@ -12,12 +12,20 @@
 # Config:
 #   PEIRCE_MCP_URL     default https://peirce.app/mcp
 #   PEIRCE_MCP_TOKEN   bearer token; falls back to the peirce entry in ~/.claude.json
-#   PEIRCE_WORK        scratch dir, default ~/.cache/peirce-kit
+#   PEIRCE_WORK        scratch dir; default is a private temp dir, removed on exit
 set -euo pipefail
 
 URL="${PEIRCE_MCP_URL:-https://peirce.app/mcp}"
-WORK="${PEIRCE_WORK:-$HOME/.cache/peirce-kit}"
-mkdir -p "$WORK"
+# Scratch space. Private per invocation, so two runs in parallel cannot read
+# each other's half-written payload; set PEIRCE_WORK to a real path to keep the
+# intermediate files around and look at them.
+WORK="${PEIRCE_WORK:-}"
+if [ -n "$WORK" ]; then
+  mkdir -p "$WORK"
+else
+  WORK="$(mktemp -d "${TMPDIR:-/tmp}/peirce-kit.XXXXXX")"
+  trap 'rm -rf "$WORK"' EXIT
+fi
 
 TOKEN="$(python3 - <<'PY'
 import json, os, pathlib, sys
