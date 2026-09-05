@@ -1,0 +1,7 @@
+{
+  "name": "peirce-design-kit",
+  "description": "Draw, edit and audit Penpot designs through the Peirce MCP. Carries the working loop, the drawing helpers and the API constraints that are expensive to rediscover.",
+  "version": "0.1.0",
+  "author": { "name": "Peirce" },
+  "keywords": ["penpot", "design", "mcp", "design-system", "tokens"]
+}

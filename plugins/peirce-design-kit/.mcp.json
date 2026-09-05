@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "peirce": {
+      "type": "http",
+      "url": "${PEIRCE_MCP_URL:-https://peirce.app/mcp}",
+      "headers": { "Authorization": "${PEIRCE_MCP_TOKEN}" }
+    }
+  }
+}

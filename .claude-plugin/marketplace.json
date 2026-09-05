@@ -1,0 +1,11 @@
+{
+  "name": "peirce",
+  "description": "Tools for driving Peirce from an AI client.",
+  "owner": { "name": "Peirce" },
+  "plugins": [
+    {
+      "name": "peirce-design-kit",
+      "source": "./plugins/peirce-design-kit"
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# One JSON-RPC call to the Peirce MCP server.
+#
+#   peirce-mcp <tool> [args.json]     any tool, arguments from a JSON file
+#   peirce-mcp code <script.js>       run a script through execute_code
+#
+# Works whether or not the mcp__peirce__* tools registered this session: they
+# register only at session start, so a DNS hiccup then loses them for the whole
+# session and /mcp reconnect does not bring them back. This talks to the same
+# server directly, so every tool stays reachable.
+#
+# Config:
+#   PEIRCE_MCP_URL     default https://peirce.app/mcp
+#   PEIRCE_MCP_TOKEN   bearer token; falls back to the peirce entry in ~/.claude.json
+#   PEIRCE_WORK        scratch dir, default ~/.cache/peirce-kit
+set -euo pipefail
+
+URL="${PEIRCE_MCP_URL:-https://peirce.app/mcp}"
+WORK="${PEIRCE_WORK:-$HOME/.cache/peirce-kit}"
+mkdir -p "$WORK"
+
+TOKEN="$(python3 - <<'PY'
+import json, os, pathlib, sys
+tok = os.environ.get("PEIRCE_MCP_TOKEN", "").strip()
+if not tok:
+    p = pathlib.Path.home() / ".claude.json"
+    if p.exists():
+        try:
+            d = json.loads(p.read_text())
+        except Exception:
+            d = {}
+        pools = [d.get("mcpServers") or {}]
+        pools += [(v.get("mcpServers") or {}) for v in (d.get("projects") or {}).values()]
+        for pool in pools:
+            srv = pool.get("peirce") or {}
+            for k, v in (srv.get("headers") or {}).items():
+                if k.lower() == "authorization" and v:
+                    tok = v
+                    break
+            if tok:
+                break
+if not tok:
+    sys.exit("peirce-mcp: no token. Set PEIRCE_MCP_TOKEN, or configure the "
+             "'peirce' MCP server in ~/.claude.json with an Authorization header.")
+print(tok)
+PY
+)"
+
+TOOL="${1:?usage: peirce-mcp <tool|code> [args.json|script.js]}"
+SRC="${2:-}"
+
+python3 - "$TOOL" "$SRC" > "$WORK/payload.json" <<'PY'
+import json, sys
+tool, src = sys.argv[1], sys.argv[2]
+if tool == "code":
+    if not src:
+        sys.exit("peirce-mcp code: needs a script path")
+    args, tool = {"code": open(src).read()}, "execute_code"
+else:
+    args = json.load(open(src)) if src else {}
+json.dump({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+           "params": {"name": tool, "arguments": args}}, sys.stdout)
+PY
+
+curl -s -m 180 -X POST "$URL" \
+  -H "Authorization: $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  --data-binary @"$WORK/payload.json" > "$WORK/resp.json"
+
+python3 - "$WORK/resp.json" <<'PY'
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit("peirce-mcp: server did not return JSON:\n"
+             + open(sys.argv[1]).read()[:600])
+if "error" in d:
+    sys.exit("RPC ERROR: " + json.dumps(d["error"])[:800])
+for c in d.get("result", {}).get("content", []):
+    t = c.get("text", "")
+    try:
+        o = json.loads(t)
+        print(o.get("log", "") or json.dumps(o)[:4000])
+    except Exception:
+        print(t[:4000])
+PY

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Export one shape to a PNG on disk, so it can be read back and looked at.
+#
+#   peirce-export <shapeId> [out.png]
+#
+# Export a section board, not the whole page: a full-page export times out while
+# the renderer is busy. Run a no-op call first (peirce-run ping) or you get the
+# state from before your last write.
+set -euo pipefail
+
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORK="${PEIRCE_WORK:-$HOME/.cache/peirce-kit}"
+mkdir -p "$WORK"
+
+ID="${1:?usage: peirce-export <shapeId> [out.png]}"
+OUT="${2:-$WORK/out.png}"
+
+python3 -c "import json,sys; json.dump({'shapeId':sys.argv[1],'format':'png'},open(sys.argv[2],'w'))" \
+  "$ID" "$WORK/export.json"
+"$SELF/peirce-mcp" export_shape "$WORK/export.json" >/dev/null 2>&1 || true
+
+python3 - "$WORK/resp.json" "$OUT" <<'PY'
+import base64, json, sys
+d = json.load(open(sys.argv[1]))
+for i in d.get("result", {}).get("content", []):
+    if i.get("type") == "image":
+        open(sys.argv[2], "wb").write(base64.b64decode(i["data"]))
+        print("saved " + sys.argv[2])
+        break
+else:
+    print(json.dumps(d.get("result", {}).get("content", []))[:600])
+PY

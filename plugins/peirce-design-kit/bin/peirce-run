@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Run a drawing script inside the design open in the browser.
+#
+#   peirce-run <script.js|recipe-name> ['<args-json>']
+#
+# Concatenates  ARGS + tokens.js + lib.js + your script  into one payload and
+# posts it to execute_code. Penpot's sandbox has no module loader, so the library
+# is prepended as source text rather than imported. Your script sees ARGS, the
+# token data, and every helper in lib.js.
+#
+# A bare name resolves against the kit's recipes/, so `peirce-run ping` works.
+set -euo pipefail
+
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+KIT="${PEIRCE_KIT:-$(dirname "$SELF")}"
+LIB="$KIT/skills/penpot-mcp/lib"
+RECIPES="$KIT/skills/penpot-mcp/recipes"
+WORK="${PEIRCE_WORK:-$HOME/.cache/peirce-kit}"
+mkdir -p "$WORK"
+
+SRC="${1:?usage: peirce-run <script.js|recipe> ['<args-json>']}"
+[ -f "$SRC" ] || SRC="$RECIPES/${SRC%.js}.js"
+[ -f "$SRC" ] || { echo "peirce-run: no such script: $1" >&2; exit 1; }
+
+# A token file is optional and belongs to the user's design system, not to this
+# kit. Drop one at lib/tokens.js and it is prepended to every call; point TOKENS
+# at another path to swap it per call. `peirce-run tokens-pull` prints one for
+# the file that is currently open.
+TOK="${TOKENS:-$LIB/tokens.js}"
+[ -f "$TOK" ] || TOK=/dev/null
+
+# a brace-default here leaks a backslash into the JS, so branch explicitly
+ARGS_JSON="${2:-}"
+[ -z "$ARGS_JSON" ] && ARGS_JSON='{}'
+printf 'var ARGS = %s;\n' "$ARGS_JSON" > "$WORK/args.js"
+cat "$WORK/args.js" "$TOK" "$LIB/lib.js" "$SRC" > "$WORK/build.js"
+"$SELF/peirce-mcp" code "$WORK/build.js"
